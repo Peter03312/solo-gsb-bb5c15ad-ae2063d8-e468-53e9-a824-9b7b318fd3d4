@@ -48,7 +48,7 @@ function intNonNeg(v, field, { positive = false } = {}) {
   return n;
 }
 
-const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+const { isValidEventTime } = require('./timeutil');
 
 // ---------- 登记一卷 ----------
 function registerRoll(db, body) {
@@ -60,8 +60,8 @@ function registerRoll(db, body) {
   if (print_qty > 1e9) throw new LabelError('INVALID_REQUEST', '印量超出允许范围');
   const registered_by = String((body && body.registered_by) || '').trim() || '未署名';
   const registered_at = String((body && body.registered_at) || '').trim();
-  if (registered_at && !TIME_RE.test(registered_at)) {
-    throw new LabelError('INVALID_REQUEST', '登记时间格式应为 YYYY-MM-DDTHH:MM');
+  if (registered_at && !isValidEventTime(registered_at)) {
+    throw new LabelError('INVALID_REQUEST', '登记时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS');
   }
   const declared = Array.isArray(body && body.allergens) ? body.allergens : null;
   if (!declared) throw new LabelError('INVALID_REQUEST', '请录入拟印过敏原集合');
@@ -151,8 +151,8 @@ function consumeRoll(db, id, body) {
   }
   const used_by = String((body && body.used_by) || (body && body.operator) || '').trim() || '未署名';
   const used_at = String((body && body.used_at) || '').trim();
-  if (used_at && !TIME_RE.test(used_at)) {
-    throw new LabelError('INVALID_REQUEST', '核销时间格式应为 YYYY-MM-DDTHH:MM');
+  if (used_at && !isValidEventTime(used_at)) {
+    throw new LabelError('INVALID_REQUEST', '核销时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS');
   }
 
   let result;
@@ -243,8 +243,8 @@ function correctUsage(db, rollId, usageId, body) {
   const reason = String((body && body.reason) || '').trim();
   if (!reason) throw new LabelError('INVALID_REQUEST', '请录入更正原因');
   const corrected_at = String((body && body.corrected_at) || '').trim();
-  if (corrected_at && !TIME_RE.test(corrected_at)) {
-    throw new LabelError('INVALID_REQUEST', '更正时间格式应为 YYYY-MM-DDTHH:MM');
+  if (corrected_at && !isValidEventTime(corrected_at)) {
+    throw new LabelError('INVALID_REQUEST', '更正时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS');
   }
 
   let result;

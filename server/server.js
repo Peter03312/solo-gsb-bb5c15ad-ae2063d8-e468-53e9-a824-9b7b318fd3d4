@@ -16,6 +16,7 @@ const quarantine = require('./quarantine');
 const inventory = require('./inventory');
 const { traceMaterial } = require('./trace');
 const { getFullState } = require('./state');
+const { isValidEventTime } = require('./timeutil');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -580,8 +581,8 @@ function normalizeEventBody(body, isUpdate = false) {
   const type = String(body.type || '').toUpperCase();
   if (type !== 'PROCESS' && type !== 'CLEAN') throw new Error('事件类型必须为 PROCESS 或 CLEAN');
   const event_time = String(body.event_time || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(event_time)) {
-    throw new Error('事件时间格式应为 YYYY-MM-DDTHH:MM，例如 2026-09-30T08:00');
+  if (!isValidEventTime(event_time)) {
+    throw new Error('事件时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS，例如 2026-09-30T08:00（2026-02-30、25:61 等不存在时刻不接受）');
   }
   const equipment_id = parseInt(body.equipment_id, 10);
   if (!Number.isInteger(equipment_id)) throw new Error('请选择设备');
@@ -673,8 +674,8 @@ app.post('/api/releases', (req, res) => {
     const batch_id = parseInt(req.body.batch_id, 10);
     if (!Number.isInteger(batch_id)) throw new Error('请选择批次');
     const released_at = String(req.body.released_at || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(released_at)) {
-      throw new Error('放行时间格式应为 YYYY-MM-DDTHH:MM');
+    if (!isValidEventTime(released_at)) {
+      throw new Error('放行时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS');
     }
     const released_by = String(req.body.released_by || '').trim() || '未署名';
 

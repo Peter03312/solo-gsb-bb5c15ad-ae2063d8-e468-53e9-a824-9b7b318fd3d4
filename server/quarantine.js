@@ -19,9 +19,7 @@
 // 批号的 FLAGGED 异常标记仍只作留痕，与隔离令互不影响。
 
 const { traceMaterial } = require('./trace');
-const { normTime } = require('./timeutil');
-
-const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+const { normTime, isValidEventTime } = require('./timeutil');
 
 class QuarantineError extends Error {
   constructor(code, message, details) {
@@ -250,8 +248,8 @@ function issueOrder(db, body) {
   const issued_by = String(body.issued_by || '').trim();
   if (!issued_by) throw new QuarantineError('INVALID_REQUEST', '请录入签发操作人');
   const issued_at = String(body.issued_at || '').trim();
-  if (issued_at && !TIME_RE.test(issued_at)) {
-    throw new QuarantineError('INVALID_REQUEST', '签发时间格式应为 YYYY-MM-DDTHH:MM');
+  if (issued_at && !isValidEventTime(issued_at)) {
+    throw new QuarantineError('INVALID_REQUEST', '签发时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS');
   }
   const lot = db.prepare(
     `SELECT l.id, l.lot_code, l.material_id, m.code AS material_code, m.name AS material_name
@@ -318,8 +316,8 @@ function liftOrder(db, id, body) {
   const lift_reason = String(body.lift_reason || body.reason || '').trim();
   if (!lift_reason) throw new QuarantineError('INVALID_REQUEST', '请录入解除原因');
   const lifted_at = String(body.lifted_at || '').trim();
-  if (lifted_at && !TIME_RE.test(lifted_at)) {
-    throw new QuarantineError('INVALID_REQUEST', '解除时间格式应为 YYYY-MM-DDTHH:MM');
+  if (lifted_at && !isValidEventTime(lifted_at)) {
+    throw new QuarantineError('INVALID_REQUEST', '解除时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS');
   }
 
   let released = [];

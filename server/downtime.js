@@ -10,9 +10,7 @@
 //     时间核对窗口（见 validation.js 的全量校验），命中即指出冲突、整次拒绝；
 //   - 停机不等于清洗：窗口不是事件，不改变设备残留或过敏原推导，不触发重算联动。
 
-const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
-
-const { normTime } = require('./timeutil');
+const { normTime, isValidEventTime } = require('./timeutil');
 
 class DowntimeError extends Error {
   constructor(code, message, details, conflicts) {
@@ -50,12 +48,14 @@ function normalizeWindowBody(db, body) {
   }
 
   const start_time = String(body.start_time || '').trim();
-  if (!TIME_RE.test(start_time)) {
-    throw new DowntimeError('INVALID_REQUEST', '开始时间格式应为 YYYY-MM-DDTHH:MM，例如 2026-10-09T08:00');
+  if (!isValidEventTime(start_time)) {
+    throw new DowntimeError('INVALID_REQUEST',
+      '开始时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS，例如 2026-10-09T08:00');
   }
   const end_time = String(body.end_time || '').trim();
-  if (!TIME_RE.test(end_time)) {
-    throw new DowntimeError('INVALID_REQUEST', '结束时间格式应为 YYYY-MM-DDTHH:MM，例如 2026-10-09T12:00');
+  if (!isValidEventTime(end_time)) {
+    throw new DowntimeError('INVALID_REQUEST',
+      '结束时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS，例如 2026-10-09T12:00');
   }
   if (!(normTime(start_time) < normTime(end_time))) {
     throw new DowntimeError(

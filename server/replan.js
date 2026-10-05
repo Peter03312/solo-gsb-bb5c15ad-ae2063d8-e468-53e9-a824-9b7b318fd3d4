@@ -27,10 +27,9 @@ const Database = require('better-sqlite3');
 const { initSchema } = require('./db');
 const { validateAll } = require('./validation');
 const { recompute } = require('./recompute');
-const { normTime } = require('./timeutil');
+const { normTime, isValidEventTime } = require('./timeutil');
 
 const PREVIEW_TTL_MS = 30 * 60 * 1000; // 预演版本有效期 30 分钟
-const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 
 // 进程级随机密钥：重启后旧预演令牌自然失效（返回 VERSION_EXPIRED/INVALID）。
 const SIGN_SECRET = crypto.randomBytes(32);
@@ -103,8 +102,8 @@ function normalizeChanges(rawChanges) {
         errors.push(`${where}：缺少事件时间 event_time`);
         return;
       }
-      if (!TIME_RE.test(event_time)) {
-        errors.push(`${where}：事件时间格式应为 YYYY-MM-DDTHH:MM，例如 2026-09-30T08:00`);
+      if (!isValidEventTime(event_time)) {
+        errors.push(`${where}：事件时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS，例如 2026-09-30T08:00（2026-02-30、25:61 等不存在时刻不接受）`);
         return;
       }
       const equipment_id = parseInt(ch.equipment_id, 10);
@@ -203,8 +202,8 @@ function normalizeChanges(rawChanges) {
       errors.push(`${where}：拟插入的清洗事件缺少时间 event_time（必须明确指定）`);
       return;
     }
-    if (!TIME_RE.test(event_time)) {
-      errors.push(`${where}：清洗事件时间格式应为 YYYY-MM-DDTHH:MM，例如 2026-09-30T12:30`);
+    if (!isValidEventTime(event_time)) {
+      errors.push(`${where}：清洗事件时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS，例如 2026-09-30T12:30（2026-02-30、25:61 等不存在时刻不接受）`);
       return;
     }
     const equipment_id = parseInt(ch.equipment_id, 10);

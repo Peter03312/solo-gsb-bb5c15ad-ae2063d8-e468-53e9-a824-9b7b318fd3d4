@@ -68,6 +68,9 @@
 - 时间文本同时接受**分钟写法 `2026-10-01T09:00`** 与**带秒写法 `2026-10-01T09:00:00`**：
   冲突与先后一律按**实际时刻**判定（两者为同一刻），原文写法则原样保留在事件中。详见下文
   [“时间写法与实际时刻判定”](#时间写法与实际时刻判定本轮修复)。
+- 时间还必须是**真实存在的公历日期与合法时分秒**（闰年按公历判定）：
+  `2026-02-30`、`2026-10-01T25:61` 等不存在时刻在写入前拒绝，不参与排序、窗口冲突与批次引用判断。
+  详见下文 [“日历时间校验”](#日历时间校验只接受真实日期与合法时分秒本轮修复)。
 
 ### 部分清洗（CLEAN 事件携带已核实去除过敏原集合）
 
@@ -475,6 +478,90 @@ curl -s -X POST http://localhost:3000/api/replan/preview \
 ```
 
 端到端测试：`npm run test:time-instants`（四条路径 + 文本保留/幂等/合法变更重算，共 30+ 项断言）。
+
+## 日历时间校验：只接受真实日期与合法时分秒（本轮修复）
+
+上述两种写法此前只做**字符格式**校验（形如 `YYYY-MM-DDTHH:MM[:SS]` 即放行），
+`2026-02-30T09:00`（2 月没有 30 日）、`2026-10-01T25:61`（25 时 61 分）这类**不存在的时刻**
+也能写入，进而参与事件排序、停机窗口冲突与批次引用先后判断，使后续结论建立在虚构时间点上。
+
+本轮在 `server/timeutil.js` 新增 `isValidEventTime()`，所有携带该形态时间的写入入口统一先过日历校验，
+再进入既有事务/窗口/引用逻辑：
+
+- **日期必须真实存在**：月份 01–12；日不得超过当月天数；
+  **闰年按公历判定**——能被 4 整除且不能被 100 整除，或能被 400 整除（2024、2000 年 2 月有 29 日；
+  2026、1900 年 2 月只有 28 日）。
+- **时分秒必须合法**：时 00–23、分 00–59、秒 00–59；分钟写法省略秒时按 00 秒处理。
+- **分钟写法与带秒写法继续都可用且原文保留**；同刻比较、排序、窗口与引用规则均不变。
+- **非法时刻在写入前拒绝（HTTP 400）**，不进入排序/冲突/引用判断：
+  - 单条加工/清洗事件新增与更正（`POST/PUT /api/events`）：拒绝后原事件、窗口与推导结论不变；
+  - 检修停机窗口登记与调整（`POST/PUT /api/downtime-windows`）：起或止非法即整次拒绝、原窗口不变；
+  - 断网整包补录（`POST /api/backfills`）：包内任一记录时间非法 -> 整包拒绝、**整包回滚**
+    （事件与补录台账都不落库，合法记录也不例外）；
+  - 换线预演与确认（`POST /api/replan/preview`、`/api/replan/apply`）：预演阶段即拒绝、
+    **不写正式数据**；即使绕过预演直接确认，非法时间同样在写入前拒绝。
+  - 同口径的业务时间字段（放行 `released_at`、标签登记/核销/更正、出货、评估处置、隔离签发/解除、
+    库存期初/入库时间）也统一按真实日历校验。
+- **合法边界时间仍按现有规则执行**：如 `23:59:59`、月末当日、`00:00:00`、闰年 `02-29` 均正常接受，
+  窗口左闭右开、起点须早于终点、同设备同刻冲突等既有规则一字不改。
+
+网页表单使用浏览器 `datetime-local` 控件（事件框 `step=1` 支持到秒），本身即限制为真实日期；
+本修复针对的是可调用 HTTP API 直连场景，页面与 API 的判定口径现在一致。
+
+### 调用示例（curl）
+
+```bash
+# 1) 不存在的日期（2026 平年，2 月只有 28 日）-> 写入前 400 拒绝
+curl -s -X POST http://localhost:3000/api/events \
+  -H 'Content-Type: application/json' -d '{
+    "type":"PROCESS","event_time":"2026-02-30T09:00","equipment_id":1,
+    "batch_code":"B-NODATE","material_ids":[3] }'
+# -> 400 { error:"事件时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM
+#          或 YYYY-MM-DDTHH:MM:SS，例如 2026-09-30T08:00（2026-02-30、25:61 等不存在时刻不接受）" }
+
+# 2) 非法时分秒（25 时 61 分）-> 400 拒绝
+curl -s -X POST http://localhost:3000/api/events \
+  -H 'Content-Type: application/json' -d '{
+    "type":"CLEAN","event_time":"2026-10-01T25:61","equipment_id":1 }'
+# -> 400 同上日历错误；事件总数、已有事件与推导结论均不变
+
+# 3) 停机窗口：起点非法 -> 整次拒绝（窗口不落库）
+curl -s -X POST http://localhost:3000/api/downtime-windows \
+  -H 'Content-Type: application/json' -d '{
+    "equipment_id":1,"start_time":"2026-02-30T08:00","end_time":"2026-02-30T12:00",
+    "reason":"虚构日期检修","operator":"tester" }'
+# -> 400 INVALID_REQUEST，错误信息要求真实公历日期
+
+# 4) 断网整包补录：包内一条记录落在不存在的日期 -> 整包回滚
+curl -s -X POST http://localhost:3000/api/backfills \
+  -H 'Content-Type: application/json' -d '{
+    "backfill_code":"BF-CAL-1",
+    "records":[
+      {"external_ref":"OK1","type":"PROCESS","event_time":"2026-05-01T08:00",
+       "equipment_id":1,"batch_code":"BF-B1","material_ids":[3]},
+      {"external_ref":"BAD1","type":"CLEAN","event_time":"2026-02-30T09:00",
+       "equipment_id":1} ] }'
+# -> 400，details:["records[1]：事件时间须为真实存在的公历日期与合法时分秒…"]
+#    GET /api/backfills/BF-CAL-1 -> 404（台账未写）；BF-B1 批次与事件同样未落库
+
+# 5) 换线预演：把既有事件更正到 25:61 -> 预演即 400，正式数据不变
+curl -s -X POST http://localhost:3000/api/replan/preview \
+  -H 'Content-Type: application/json' -d '{
+    "changes":[{"op":"update","event_id":10,"type":"PROCESS",
+      "event_time":"2026-10-01T25:61","equipment_id":1,
+      "batch_code":"B-1001","material_ids":[3]}] }'
+# -> 400，details 点明日历/时分秒不合法；不产生预演版本、不改任何正式事件
+
+# 6) 合法边界照常接受：闰年闰日（2024 能被 4 整除且非整百年）带秒写法，原文保留
+curl -s -X POST http://localhost:3000/api/events \
+  -H 'Content-Type: application/json' -d '{
+    "type":"PROCESS","event_time":"2024-02-29T23:59:59","equipment_id":1,
+    "batch_code":"B-LEAP","material_ids":[3] }'
+# -> 200 { id:… }；GET /api/state 中该事件 event_time 仍为 "2024-02-29T23:59:59"
+# 对照：1900-02-29（能被 100 整除但不能被 400 整除，平年）与 2026-02-29 一律 400。
+```
+
+端到端测试：`npm run test:calendar-time`（四个被点名入口 + 闰年/边界/回滚/不改正式数据，共 50+ 项断言）。
 
 ## 过敏原标签卷（包装前登记 → 核销贴用/作废）
 

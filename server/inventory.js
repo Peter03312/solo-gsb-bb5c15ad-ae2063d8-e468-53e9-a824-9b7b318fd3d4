@@ -14,7 +14,7 @@
 // 余额不足整次拒绝、原事件与库存不变；换线预演只展示各批号余额差异、不占用库存。
 // 断网补录同内容重试或复用既有外部记录不重复领用（不重复写入即不重复占用）。
 
-const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+const { isValidEventTime } = require('./timeutil');
 
 class InventoryError extends Error {
   constructor(code, message, details) {
@@ -51,8 +51,8 @@ function posGrams(v, field) {
 function parseTime(v, field) {
   const t = String(v || '').trim();
   if (!t) return '';
-  if (!TIME_RE.test(t)) {
-    throw new InventoryError('INVALID_REQUEST', `${field}格式应为 YYYY-MM-DDTHH:MM，例如 2026-10-01T08:00`);
+  if (!isValidEventTime(t)) {
+    throw new InventoryError('INVALID_REQUEST', `${field}须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS，例如 2026-10-01T08:00`);
   }
   return t;
 }

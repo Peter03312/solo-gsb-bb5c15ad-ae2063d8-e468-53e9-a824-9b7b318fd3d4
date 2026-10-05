@@ -24,7 +24,7 @@ const crypto = require('crypto');
 const shipments = require('./shipments');
 
 const VERSION_TTL_MS = 30 * 60 * 1000; // 查询版本有效期 30 分钟
-const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+const { isValidEventTime } = require('./timeutil');
 
 // 进程级随机密钥：重启后旧查询版本自然失效。
 const SIGN_SECRET = crypto.randomBytes(32);
@@ -400,8 +400,8 @@ function submitDisposition(db, idOrCode, body) {
   const basis = String(body.basis || '').trim();
   if (!basis) throw new EvaluationError('INVALID_REQUEST', '请录入处置依据');
   const decided_at = String(body.decided_at || '').trim();
-  if (decided_at && !TIME_RE.test(decided_at)) {
-    throw new EvaluationError('INVALID_REQUEST', '处置时间格式应为 YYYY-MM-DDTHH:MM');
+  if (decided_at && !isValidEventTime(decided_at)) {
+    throw new EvaluationError('INVALID_REQUEST', '处置时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS');
   }
 
   let insertedId = null;

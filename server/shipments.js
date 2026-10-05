@@ -23,7 +23,7 @@
 //   与确认出货的 BATCH_QUARANTINED 拒绝语义一致；脱离全部生效令后按未停用卷剩余
 //   已贴用量恢复，停用卷始终为 0，待评估单仍占用原分配量。
 
-const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+const { isValidEventTime } = require('./timeutil');
 
 class ShipmentError extends Error {
   constructor(code, message, details) {
@@ -63,8 +63,8 @@ function createShipment(db, body) {
   if (!shipped_by) throw new ShipmentError('INVALID_REQUEST', '请录入操作人');
 
   const shipped_at = String(body.shipped_at || '').trim();
-  if (shipped_at && !TIME_RE.test(shipped_at)) {
-    throw new ShipmentError('INVALID_REQUEST', '出货时间格式应为 YYYY-MM-DDTHH:MM');
+  if (shipped_at && !isValidEventTime(shipped_at)) {
+    throw new ShipmentError('INVALID_REQUEST', '出货时间须为真实存在的公历日期与合法时分秒，格式 YYYY-MM-DDTHH:MM 或 YYYY-MM-DDTHH:MM:SS');
   }
 
   const rawAllocs = body.allocations;
