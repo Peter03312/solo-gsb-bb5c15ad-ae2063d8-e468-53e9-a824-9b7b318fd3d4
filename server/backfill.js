@@ -21,7 +21,7 @@
 const crypto = require('crypto');
 const { validateAll } = require('./validation');
 const { recompute } = require('./recompute');
-const { normTime, instantBefore } = require('./timeutil');
+const { normTime, instantBefore, calendarTimeError } = require('./timeutil');
 
 const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 
@@ -159,6 +159,12 @@ function normalizeRequest(body) {
     if (!event_time) errors.push(`${where}：缺少事件时间 event_time`);
     else if (!TIME_RE.test(event_time)) {
       errors.push(`${where}：事件时间格式应为 YYYY-MM-DDTHH:MM，例如 2026-09-30T08:00`);
+    } else {
+      // 日历校验：必须是真实存在的公历时刻（2026-02-30T08:00 等整包拒绝，不写事件与台账）。
+      const calErr = calendarTimeError(event_time);
+      if (calErr) {
+        errors.push(`${where}：事件时间不是真实存在的日历时间：${calErr}（收到 ${event_time}）`);
+      }
     }
     const equipment = parseRef(r.equipment_id, r.equipment_code, '设备');
     if (equipment && equipment.error) errors.push(`${where}：${equipment.error}`);

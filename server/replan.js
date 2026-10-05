@@ -27,7 +27,7 @@ const Database = require('better-sqlite3');
 const { initSchema } = require('./db');
 const { validateAll } = require('./validation');
 const { recompute } = require('./recompute');
-const { normTime } = require('./timeutil');
+const { normTime, calendarTimeError } = require('./timeutil');
 
 const PREVIEW_TTL_MS = 30 * 60 * 1000; // 预演版本有效期 30 分钟
 const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
@@ -105,6 +105,12 @@ function normalizeChanges(rawChanges) {
       }
       if (!TIME_RE.test(event_time)) {
         errors.push(`${where}：事件时间格式应为 YYYY-MM-DDTHH:MM，例如 2026-09-30T08:00`);
+        return;
+      }
+      // 日历校验：必须是真实存在的公历时刻（不存在的时刻不得进入影子库预演）。
+      const updateCalErr = calendarTimeError(event_time);
+      if (updateCalErr) {
+        errors.push(`${where}：事件时间不是真实存在的日历时间：${updateCalErr}（收到 ${event_time}）`);
         return;
       }
       const equipment_id = parseInt(ch.equipment_id, 10);
@@ -205,6 +211,12 @@ function normalizeChanges(rawChanges) {
     }
     if (!TIME_RE.test(event_time)) {
       errors.push(`${where}：清洗事件时间格式应为 YYYY-MM-DDTHH:MM，例如 2026-09-30T12:30`);
+      return;
+    }
+    // 日历校验：必须是真实存在的公历时刻（不存在的时刻不得进入影子库预演）。
+    const insertCalErr = calendarTimeError(event_time);
+    if (insertCalErr) {
+      errors.push(`${where}：清洗事件时间不是真实存在的日历时间：${insertCalErr}（收到 ${event_time}）`);
       return;
     }
     const equipment_id = parseInt(ch.equipment_id, 10);

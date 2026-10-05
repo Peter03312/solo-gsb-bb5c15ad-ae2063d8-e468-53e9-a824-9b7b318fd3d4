@@ -16,6 +16,7 @@ const quarantine = require('./quarantine');
 const inventory = require('./inventory');
 const { traceMaterial } = require('./trace');
 const { getFullState } = require('./state');
+const { calendarTimeError } = require('./timeutil');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -582,6 +583,12 @@ function normalizeEventBody(body, isUpdate = false) {
   const event_time = String(body.event_time || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(event_time)) {
     throw new Error('事件时间格式应为 YYYY-MM-DDTHH:MM，例如 2026-09-30T08:00');
+  }
+  // 日历校验：字符格式合法还不够，必须是真实存在的公历时刻
+  // （2026-02-30T09:00、2026-10-01T25:61 等在写入前拒绝，不参与排序/冲突/引用判断）。
+  const eventTimeCalErr = calendarTimeError(event_time);
+  if (eventTimeCalErr) {
+    throw new Error(`事件时间不是真实存在的日历时间：${eventTimeCalErr}（收到 ${event_time}）`);
   }
   const equipment_id = parseInt(body.equipment_id, 10);
   if (!Number.isInteger(equipment_id)) throw new Error('请选择设备');

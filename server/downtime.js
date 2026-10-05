@@ -12,7 +12,7 @@
 
 const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 
-const { normTime } = require('./timeutil');
+const { normTime, calendarTimeError } = require('./timeutil');
 
 class DowntimeError extends Error {
   constructor(code, message, details, conflicts) {
@@ -53,9 +53,24 @@ function normalizeWindowBody(db, body) {
   if (!TIME_RE.test(start_time)) {
     throw new DowntimeError('INVALID_REQUEST', '开始时间格式应为 YYYY-MM-DDTHH:MM，例如 2026-10-09T08:00');
   }
+  // 日历校验：起点必须是真实存在的公历时刻（2026-02-30T08:00 等在写入前拒绝）。
+  const startCalErr = calendarTimeError(start_time);
+  if (startCalErr) {
+    throw new DowntimeError(
+      'INVALID_REQUEST',
+      `开始时间不是真实存在的日历时间：${startCalErr}（收到 ${start_time}）`
+    );
+  }
   const end_time = String(body.end_time || '').trim();
   if (!TIME_RE.test(end_time)) {
     throw new DowntimeError('INVALID_REQUEST', '结束时间格式应为 YYYY-MM-DDTHH:MM，例如 2026-10-09T12:00');
+  }
+  const endCalErr = calendarTimeError(end_time);
+  if (endCalErr) {
+    throw new DowntimeError(
+      'INVALID_REQUEST',
+      `结束时间不是真实存在的日历时间：${endCalErr}（收到 ${end_time}）`
+    );
   }
   if (!(normTime(start_time) < normTime(end_time))) {
     throw new DowntimeError(

@@ -20,7 +20,8 @@
     "test:downtime": "node scripts/test-downtime.js",
     "test:quarantine": "node scripts/test-quarantine.js",
     "test:inventory": "node scripts/test-inventory.js",
-    "test:time-instants": "node scripts/test-time-instants.js"
+    "test:time-instants": "node scripts/test-time-instants.js",
+    "test:calendar-time": "node scripts/test-calendar-time.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
